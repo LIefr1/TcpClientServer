@@ -1,4 +1,4 @@
-﻿using System.Net;
+using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -30,87 +30,109 @@ namespace server
 		/// </summary>
 		private char[] _invalidSymbols;
 
-		public Server(Socket socket)
-		{
-			if (socket == null)
-			{
-				throw new ArgumentNullException(nameof(socket), "Пустой сокет.");
-			}
+        public Server(Socket socket)
+        {
+            if (socket == null)
+            {
+                throw new ArgumentNullException(nameof(socket), "Empty socket.");
+            }
 
-			_socket = socket;
-			_socket.Bind(new IPEndPoint(IPAddress.Any, 9090));
+            _socket = socket;
+            _socket.Bind(new IPEndPoint(IPAddress.Any, 9090));
 
-			_clients = new List<Socket>();
-			_invalidSymbols = new char[] { '/', '<', '>', '^', ';', '{', '}', '`', '~' };
-		}
-
-
-		/// <summary>
-		/// Запуск сервера.
-		/// </summary>
-		public void Start()
-		{
-			_socket.Listen();
-
-			while (true)
-			{
-				var client_socket = _socket.Accept();
-				_clients.Add(client_socket);
-				new Thread(() => ListenClient(client_socket)).Start();
-			}
-		}
+            _clients = new List<Socket>();
+            _invalidSymbols = new char[] { '/', '<', '>', '^', ';', '{', '}', '`', '~' };
+        }
 
 
-		/// <summary>
-		/// Слушаем клиента.
-		/// </summary>
-		/// <param name="client">Клиент.</param>
-		private void ListenClient(Socket client)
-		{
-			if (client == null)
-			{
-				return;
-			}
 
-			while (true)
-			{
-				var buffer = new byte[BufferSize];
+        /// <summary>
+        /// Запуск сервера.
+        /// </summary>
+        public void Start()
+        {
+            _socket.Listen();
 
-				int bytesRecv = client.Receive(buffer);
-				var data = Encoding.UTF8.GetString(buffer, 0, bytesRecv);
+            while (true)
+            {
+                try
+                {
+                    var clientSocket = _socket.Accept();
+                    lock (_clients)
+                    {
+                        _clients.Add(clientSocket);
+                    }
+                    new Thread(() => ListenClient(clientSocket)).Start();
+                }
+                catch (SocketException ex)
+                {
+                    Console.WriteLine($"Socket exception: {ex.Message}");
+                   
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Exception: {ex.Message}");
+                    
+                }
+            }
+        }
 
-				// Если пользователь прислал пустую строку.
-				if (String.IsNullOrWhiteSpace(data))
-				{
-					continue;
-				}
+        private void ListenClient(Socket client)
+        {
+            if (client == null)
+            {
+                return;
+            }
 
-				var separetedMessage = SeparateMessage(data);
+            while (true)
+            {
+                try
+                {
+                    var buffer = new byte[BufferSize];
 
-				// Если флаг содержит некорректные символы.
-				if (!CheckDataIsCorrect(separetedMessage.Flag))
-				{
-					continue;
-				}
+                    int bytesReceived = client.Receive(buffer);
+                    var data = Encoding.UTF8.GetString(buffer, 0, bytesReceived);
 
-				if (separetedMessage.Flag.ToLower() == "lower")
-				{
-					client.Send(Encoding.UTF8.GetBytes(separetedMessage.Message.ToLower()));
-				}
-				else if (separetedMessage.Flag.ToLower() == "upper")
-				{
-					client.Send(Encoding.UTF8.GetBytes(separetedMessage.Message.ToUpper()));
-				}
-			}
-		}
+                    if (String.IsNullOrWhiteSpace(data))
+                    {
+                        continue;
+                    }
 
-		
-		/// <summary>
-		/// Разделяет сообщение на флаг и само сообщение.
-		/// </summary>
-		/// <param name="message">Целое сообщение клиента.</param>
-		/// <returns>Разделенное сообщение.</returns>
-		private SeparatedMessage SeparateMessage(string message)
+                    var separatedMessage = SeparateMessage(data);
+
+                    if (!CheckDataIsCorrect(separatedMessage.Flag))
+                    {
+                        continue;
+                    }
+
+                    if (separatedMessage.Flag.ToLower() == "lower")
+                    {
+                        client.Send(Encoding.UTF8.GetBytes(separatedMessage.Message.ToLower()));
+                    }
+                    else if (separatedMessage.Flag.ToLower() == "upper")
+                    {
+                        client.Send(Encoding.UTF8.GetBytes(separatedMessage.Message.ToUpper()));
+                    }
+                }
+                catch (SocketException ex)
+                {
+                    Console.WriteLine($"Socket exception: {ex.Message}");
+                    
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Exception: {ex.Message}");
+                   
+                }
+            }
+        }
+
+        /// <summary>
+        /// Разделяет сообщение на флаг и само сообщение.
+        /// </summary>
+        /// <param name="message">Целое сообщение клиента.</param>
+        /// <returns>Разделенное сообщение.</returns>
+        private SeparatedMessage SeparateMessage(string message)
 		{
 			var separatedMessage = new SeparatedMessage();
 
